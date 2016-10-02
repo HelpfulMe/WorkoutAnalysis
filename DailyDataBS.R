@@ -70,26 +70,26 @@ days$Day=as.Date(entries)
 for(x in seq(nrow(days)))    #Starting with looping over the active days
 {       #Now loop over the workouts for that day
     daily.workout=split(split(dat, f = dat$Date)[[x]],split(dat, f = dat$Date)[[x]]$Exercise)
-#   daily.workout is a list of data frames.  each exercise done that day is a data frame
-#   with Date, Exercise, Category, Weight, Reps, Distance.Unit, Time, and Comment
-#   all the exercise names in the daily.workout list and daily.workout$(exercisename w/ spaces, etc)$Exercise still have spaces and punctuation
+    #   daily.workout is a list of data frames.  each exercise done that day is a data frame
+    #   with Date, Exercise, Category, Weight, Reps, Distance.Unit, Time, and Comment
+    #   all the exercise names in the daily.workout list and daily.workout$(exercisename w/ spaces, etc)$Exercise still have spaces and punctuation
     for(y in seq(length(daily.workout)))
     {
-#       names.workout previously used for vector of unique values of exercise names - ok to overwrite?
+        #       names.workout previously used for vector of unique values of exercise names - ok to overwrite?
         names.workout=make.names(unique(daily.workout[[y]]$Exercise)) #Get the name of the y-th workout for the x-th day, remove spaces and special chars
         category=unique(daily.workout[[y]]$Category)      #Get the category of the workout
 
         weight=sqrt(sum(daily.workout[[y]]$Weight..lbs.^2))                                      #Sqrt of sum of squares of weight - NAs will result where weight not entered
         reps=sqrt(sum(daily.workout[[y]]$Rep^2))                                                 #Sqrt of sum of squares of reps
-#       ctheta will produce error if NA in weight or reps... it can't evaluate if first part is true or false if one is NA
+        #       ctheta will produce error if NA in weight or reps... it can't evaluate if first part is true or false if one is NA
         ctheta= if((!is.na(weight) & !is.na(reps)) & (weight>0 & reps>0)){sum(daily.workout[[y]]$Weight..lbs. * daily.workout[[y]]$Reps )  /(weight*reps)}
         else {ctheta=0}                                                                        #Cosine of angle between reps and weight
-#       distance unit - sometimes meters, sometimes miles.
+        #       distance unit - sometimes meters, sometimes miles.
         distance=sqrt(sum(daily.workout[[y]]$Distance^2))                                        #Sqrt of sum of squares of distance
-#       Frequently distance is NA
+        #       Frequently distance is NA
         if(is.na(distance)){distance=0}
         time=sqrt(sum(as.numeric(daily.workout[[y]]$Time)^2))                                    #Sqrt of sum of squares of time
-#       time frequently NA
+        #       time frequently NA
         if(is.na(time)){time=0}
 
         days[x, colnames(days)==paste(names.workout,"Weight", sep = ".")]=weight
@@ -99,26 +99,33 @@ for(x in seq(nrow(days)))    #Starting with looping over the active days
         days[x, colnames(days)==paste(names.workout,"Time", sep = ".")]=time
     }
 }
-
+## MedHelper Data##--------------------------------------------------------------------------------------------------------------
 #Now, we populate the injured column
-injury=read.csv(file="MedHelper/schedulelog_2016-09-22.csv", stringsAsFactors = F)  #Reading in the file
+injury=read.csv(file="MedHelper/schedulelog_2016-09-22.csv", na.strings = "NA",
+                stringsAsFactors = F)  #Reading in the file
 
-DropRightSubStr = function(x,n){  #Drop the n right most characters
-  substr(x, 1, nchar(x) - n)
-}
+# only count meds that are for pain.
+# note to user - if add more meds in MedHelper this will need to be updated
+pain.meds <- c("Ibuprofen", "Aleve", "Hydrocodon", "Acetaminophine",
+               "Metaxalone", "Asprin", "Tramadol", "Tylenol")
 
-injury.date=unique(DropRightSubStr(injury$Actual.Time,6)) #Get ride of the time stamp, and keep only the unique days where injured
-injury.date=strsplit(injury.date, split = " ")            #Now, start reordering the date so that it matches the format in 'days'
-injury.date=lapply(injury.date, function(x) {
-  paste(x[3],match(x[2],month.abb),x[1], sep = "-")
-})
-injury.date=lapply(injury.date, function(x){
-  as.Date(x,format="%Y-%m-%d")
-})
-injury.date=injury.date[!is.na(injury.date)] #Some of the entries are NA. That's annoying. Get rid of 'em!
-injury.date=sort(unlist(injury.date))        #It became a list when the strings were split, which needs to be undone
-injury.date=as.Date(injury.date,origin="1970-01-01") #But doing that implicitly wrapped each date in "as.numeric", so let's undo that to FINALLY get a list of injured dates
+# subset for meds that are for pain
+# inspired by http://stackoverflow.com/questions/7597559/grep-in-r-with-a-list-of-patterns
+injury <- injury[(grep(paste(pain.meds,collapse="|"),
+                       injury$Prescription, ignore.case = TRUE, value = FALSE)), ]
 
+# get rid of records where no medication actually taken
+injury <- injury[(injury$Actual.Dosage>0),]
+injury <- injury[is.na(injury$Actual.Dosage)== FALSE, ]
+
+# Actual.Time is a character string.  Convert to POSIXlt
+# (leaving time for now in case later want to use calcs for # of meds in day, etc)
+injury$Actual.Time <- strptime(injury$Actual.Time, format = "%d %b %Y %H:%M")
+
+# Pull unique dates from Actual.Time - dates where pain medication taken
+injury.date <- unique(format(injury$Actual.Time, "%Y-%m-%d"))
+
+##---------------------------------------------------------------------------------------
 #As would be expected, not all injured days are currently recorded (that would mean Becca worked out while injured, which is far less likely)
 #So, let's create the rows for the days left out
 injury.date.missing=injury.date[!(injury.date %in% days$Day)]
@@ -135,7 +142,7 @@ days=days[order(days$Day),]  #It's nice to order the columns by date - doesn't a
 
 #Now populate injured.next.week from the results
 days$Injured.Next.Week = unlist(lapply(days$Day, function(x) {
-       if(1 %in% days$Injured[days$Day %in% seq(from = as.numeric(x) + 1, to = as.numeric(x) + 7)]) {1}
+    if(1 %in% days$Injured[days$Day %in% seq(from = as.numeric(x) + 1, to = as.numeric(x) + 7)]) {1}
        else {0}
   }))
 
